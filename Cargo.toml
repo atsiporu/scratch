@@ -1,0 +1,12 @@
+[package]
+name = "scratch"
+version = "0.1.0"
+authors = ["atsiporu"]
+
+[dependencies]
+futures = "*"
+tokio-core = "*"
+tokio-io = "*"
+bytes = "*"
+
+
