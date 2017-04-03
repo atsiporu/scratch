@@ -1,3 +1,5 @@
+#![feature(loop_break_value)]
+
 extern crate futures;
 extern crate tokio_core;
 extern crate tokio_io;
@@ -27,11 +29,15 @@ impl<T: AsyncRead> Stream for BytesStream<T> {
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
 
         let len = {
-            let mut read = tokio_io::io::read(&mut self.source, Rc::get_mut(&mut self.buf).unwrap() as &mut [u8]);
+           
+            let mut buf = Rc::get_mut(&mut self.buf).unwrap() as &mut [u8];
+//            let mut buf = [0u8; 1024];
+
+            let mut read = tokio_io::io::read(&mut self.source, &mut buf[..]);
             
             let res = read.poll().unwrap();
         
-            match res {
+            let len = match res {
                 Async::NotReady => { 
                     println!("Not ready");
                     0 
@@ -40,10 +46,12 @@ impl<T: AsyncRead> Stream for BytesStream<T> {
                     println!("Ready {}", len);
                     len
                 }
-            }
+            };
+
+            len
         };
 
-        if len > 4 {
+        if len > 0 {
             Ok(Async::Ready(Some(self.buf.clone())))
         }
         else {
@@ -70,21 +78,15 @@ fn main() {
     
     // For each incoming connection...
     let server = listener.incoming().for_each(|(stream, _client_addr)| {
-        
-        let (r, mut w) = stream.split();
-        
-/*
-            Some(
-                tokio_io::io::read(&mut r, &mut buf as &mut [u8])
-                              .map(|(r, data, len)| {
-                                  buf.advance_mut(len)
-                              })
-            )
-*/
 
-        let mut stream = BytesStream { source: r, buf: Rc::new(BytesMut::with_capacity(5)) };
+        let (r, mut w) = stream.split();
+       
+        let mut buf = BytesMut::with_capacity(5);
+
+        let mut stream = BytesStream { source: r, buf: Rc::new(buf) };
         let receive = stream.for_each(move |mut buf| {
-            w.write(&buf.as_ref()[..1]);
+            w.write("Writing:".as_bytes());
+            w.write(&buf.as_ref()[..]);
             //unsafe { Rc::get_mut(&mut buf).unwrap().advance_mut(1); }
             Ok(())
         })
@@ -92,6 +94,21 @@ fn main() {
             println!("Error! {:?}", e);
             Ok(())
         });
+        
+        /*
+        let amt = tokio_io::io::copy(r, w);
+
+        // After our copy operation is complete we just print out some helpful
+        // information.
+        let receive = amt.then(move |result| {
+            match result {
+                Ok((amt, _, _)) => println!("wrote {} bytes", amt),
+                Err(e) => println!("error : {}", e),
+            }
+
+            Ok(())
+        });
+        */
 
         println!("Accepted connection");
         handle.spawn(receive);
